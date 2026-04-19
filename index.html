@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Clone fonctionnel de messagerie type WhatsApp Web, code original et donnees locales."
+    />
+    <title>GreenChat | Clone messagerie</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <svg aria-hidden="true" class="icon-sprite">
+      <symbol id="i-chat" viewBox="0 0 24 24">
+        <path d="M4 5.8C4 4.8 4.8 4 5.8 4h12.4c1 0 1.8.8 1.8 1.8v8.7c0 1-.8 1.8-1.8 1.8h-7.5L6 20v-3.7h-.2c-1 0-1.8-.8-1.8-1.8V5.8Z" />
+      </symbol>
+      <symbol id="i-status" viewBox="0 0 24 24">
+        <path d="M4.6 8.6a8 8 0 0 1 6.2-4.5M15 4.5a8 8 0 0 1 4.5 4.3M20 13a8 8 0 0 1-4.4 6M11.2 20a8 8 0 0 1-6.7-4.2M12 8v4l3 2" />
+      </symbol>
+      <symbol id="i-call" viewBox="0 0 24 24">
+        <path d="M8.2 4.3 6.4 6.1c-.8.8-.9 2-.3 3 2.1 3.9 4.9 6.7 8.8 8.8 1 .6 2.2.5 3-.3l1.8-1.8-4.1-3.1-1.6 1.6c-1.9-.9-3.4-2.4-4.3-4.3l1.6-1.6-3.1-4.1Z" />
+      </symbol>
+      <symbol id="i-channel" viewBox="0 0 24 24">
+        <path d="M4 8h3l8-4v16l-8-4H4V8Zm14.5 1.2a4 4 0 0 1 0 5.6" />
+      </symbol>
+      <symbol id="i-settings" viewBox="0 0 24 24">
+        <path d="M12 8.5a3.5 3.5 0 1 1 0 7 3.5 3.5 0 0 1 0-7Z" />
+        <path d="m19 12 .9-2-2-3.4-2.2.3a7.6 7.6 0 0 0-1.7-1L13.2 4H9.4L8.6 5.9c-.6.2-1.2.6-1.7 1l-2.2-.3-2 3.4.9 2-.9 2 2 3.4 2.2-.3c.5.4 1.1.8 1.7 1l.8 1.9h3.8l.8-1.9c.6-.2 1.2-.6 1.7-1l2.2.3 2-3.4-.9-2Z" />
+      </symbol>
+      <symbol id="i-search" viewBox="0 0 24 24">
+        <path d="m21 21-4.35-4.35m2.1-5.4a7.5 7.5 0 1 1-15 0 7.5 7.5 0 0 1 15 0Z" />
+      </symbol>
+      <symbol id="i-plus" viewBox="0 0 24 24">
+        <path d="M12 5v14M5 12h14" />
+      </symbol>
+      <symbol id="i-more" viewBox="0 0 24 24">
+        <path d="M12 6.8h.01M12 12h.01M12 17.2h.01" />
+      </symbol>
+      <symbol id="i-phone" viewBox="0 0 24 24">
+        <path d="M8.2 4.3 6.4 6.1c-.8.8-.9 2-.3 3 2.1 3.9 4.9 6.7 8.8 8.8 1 .6 2.2.5 3-.3l1.8-1.8-4.1-3.1-1.6 1.6c-1.9-.9-3.4-2.4-4.3-4.3l1.6-1.6-3.1-4.1Z" />
+      </symbol>
+      <symbol id="i-video" viewBox="0 0 24 24">
+        <path d="M4 7.8c0-1 1-1.8 2.2-1.8h7.1c1.2 0 2.2.8 2.2 1.8v8.4c0 1-1 1.8-2.2 1.8H6.2C5 18 4 17.2 4 16.2V7.8Zm11.5 2.3L20 7.9v8.2l-4.5-2.2v-3.8Z" />
+      </symbol>
+      <symbol id="i-info" viewBox="0 0 24 24">
+        <path d="M12 11v6M12 7h.01" />
+        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+      </symbol>
+      <symbol id="i-emoji" viewBox="0 0 24 24">
+        <path d="M9 10h.01M15 10h.01M8.5 14.5a4.7 4.7 0 0 0 7 0" />
+        <path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18Z" />
+      </symbol>
+      <symbol id="i-clip" viewBox="0 0 24 24">
+        <path d="m8.4 12.7 5.9-5.9a3 3 0 0 1 4.2 4.2l-7.7 7.7a5 5 0 0 1-7.1-7.1l8.1-8.1" />
+      </symbol>
+      <symbol id="i-mic" viewBox="0 0 24 24">
+        <path d="M12 14a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v5a3 3 0 0 0 3 3Z" />
+        <path d="M5 11a7 7 0 0 0 14 0M12 18v3" />
+      </symbol>
+      <symbol id="i-send" viewBox="0 0 24 24">
+        <path d="m4 12 15-7-4 14-3.2-5.6L4 12Z" />
+      </symbol>
+      <symbol id="i-check" viewBox="0 0 24 24">
+        <path d="m4 12.5 4.5 4.5L20 6" />
+      </symbol>
+      <symbol id="i-pin" viewBox="0 0 24 24">
+        <path d="m15 4 5 5-4 1.5-3 3 .7 4.8L12 20l-4.4-4.4-3.6.4 6.5-6.5L12 5l3-1Z" />
+      </symbol>
+      <symbol id="i-archive" viewBox="0 0 24 24">
+        <path d="M4 7h16v13H4V7Zm1-3h14l1 3H4l1-3Zm5 8h4" />
+      </symbol>
+      <symbol id="i-lock" viewBox="0 0 24 24">
+        <path d="M7 10V8a5 5 0 0 1 10 0v2m-11 0h12v10H6V10Z" />
+      </symbol>
+      <symbol id="i-x" viewBox="0 0 24 24">
+        <path d="M6 6l12 12M18 6 6 18" />
+      </symbol>
+    </svg>
+
+    <div class="messenger-shell" id="app-shell">
+      <nav class="rail" aria-label="Navigation">
+        <div class="brand-mark" aria-label="GreenChat">G</div>
+        <button class="rail-button is-active" type="button" data-view="chats" title="Discussions" aria-label="Discussions">
+          <svg><use href="#i-chat"></use></svg>
+        </button>
+        <button class="rail-button" type="button" data-view="status" title="Statuts" aria-label="Statuts">
+          <svg><use href="#i-status"></use></svg>
+        </button>
+        <button class="rail-button" type="button" data-view="calls" title="Appels" aria-label="Appels">
+          <svg><use href="#i-call"></use></svg>
+        </button>
+        <button class="rail-button" type="button" data-view="channels" title="Channels" aria-label="Channels">
+          <svg><use href="#i-channel"></use></svg>
+        </button>
+        <div class="rail-spacer"></div>
+        <button class="rail-button" type="button" data-view="settings" title="Reglages" aria-label="Reglages">
+          <svg><use href="#i-settings"></use></svg>
+        </button>
+        <button class="avatar-button" type="button" id="profile-button" title="Profil" aria-label="Profil">TB</button>
+      </nav>
+
+      <aside class="list-panel" aria-label="Liste">
+        <header class="list-head">
+          <h1 id="view-title">Discussions</h1>
+          <div class="head-actions">
+            <button class="icon-button" id="new-chat-button" type="button" title="Nouveau chat" aria-label="Nouveau chat">
+              <svg><use href="#i-plus"></use></svg>
+            </button>
+            <button class="icon-button" type="button" title="Menu" aria-label="Menu">
+              <svg><use href="#i-more"></use></svg>
+            </button>
+          </div>
+        </header>
+
+        <label class="search-box">
+          <svg><use href="#i-search"></use></svg>
+          <input id="search-input" type="search" placeholder="Rechercher ou demarrer une discussion" autocomplete="off" />
+        </label>
+
+        <div class="filter-tabs" id="filter-tabs" role="tablist" aria-label="Filtres">
+          <button class="filter-tab is-active" type="button" data-filter="all" role="tab" aria-selected="true">Tous</button>
+          <button class="filter-tab" type="button" data-filter="unread" role="tab" aria-selected="false">Non lus</button>
+          <button class="filter-tab" type="button" data-filter="groups" role="tab" aria-selected="false">Groupes</button>
+          <button class="filter-tab" type="button" data-filter="favorites" role="tab" aria-selected="false">Favoris</button>
+        </div>
+
+        <section class="side-content" id="side-content" aria-live="polite"></section>
+      </aside>
+
+      <main class="chat-panel" aria-label="Discussion active">
+        <header class="chat-head">
+          <button class="contact-summary" id="open-details-button" type="button">
+            <span class="avatar avatar-lg" id="active-avatar">A</span>
+            <span class="contact-copy">
+              <strong id="active-name">Conversation</strong>
+              <span id="active-status">En ligne</span>
+            </span>
+          </button>
+          <div class="chat-tools">
+            <button class="icon-button" id="call-button" type="button" title="Appel audio" aria-label="Appel audio">
+              <svg><use href="#i-phone"></use></svg>
+            </button>
+            <button class="icon-button" id="video-button" type="button" title="Appel video" aria-label="Appel video">
+              <svg><use href="#i-video"></use></svg>
+            </button>
+            <button class="icon-button" type="button" title="Rechercher" aria-label="Rechercher">
+              <svg><use href="#i-search"></use></svg>
+            </button>
+            <button class="icon-button" id="details-button" type="button" title="Infos" aria-label="Infos">
+              <svg><use href="#i-info"></use></svg>
+            </button>
+          </div>
+        </header>
+
+        <section class="message-thread" id="message-thread" aria-live="polite"></section>
+
+        <section class="snippet-row" aria-label="Reponses rapides">
+          <button type="button" data-snippet="J'arrive dans 5 minutes.">J'arrive</button>
+          <button type="button" data-snippet="Ok, je te confirme ca rapidement.">Confirmer</button>
+          <button type="button" data-snippet="Envoie-moi le fichier quand tu peux.">Fichier</button>
+          <button type="button" data-snippet="On lance l'appel maintenant ?">Appel</button>
+        </section>
+
+        <form class="composer" id="composer">
+          <button class="tool-button" type="button" id="emoji-button" title="Emoji" aria-label="Emoji">
+            <svg><use href="#i-emoji"></use></svg>
+          </button>
+          <button class="tool-button" type="button" id="attach-button" title="Joindre" aria-label="Joindre">
+            <svg><use href="#i-clip"></use></svg>
+          </button>
+          <textarea id="message-input" rows="1" placeholder="Tapez un message" autocomplete="off"></textarea>
+          <button class="tool-button" type="button" id="voice-button" title="Vocal" aria-label="Vocal">
+            <svg><use href="#i-mic"></use></svg>
+          </button>
+          <button class="send-button" type="submit" title="Envoyer" aria-label="Envoyer">
+            <svg><use href="#i-send"></use></svg>
+          </button>
+        </form>
+      </main>
+
+      <aside class="details-panel" id="details-panel" aria-label="Details du contact">
+        <header class="details-head">
+          <h2>Infos du contact</h2>
+          <button class="icon-button" id="close-details-button" type="button" title="Fermer" aria-label="Fermer">
+            <svg><use href="#i-x"></use></svg>
+          </button>
+        </header>
+        <section class="profile-card">
+          <div class="profile-avatar" id="details-avatar">A</div>
+          <h3 id="details-name">Nom</h3>
+          <p id="details-phone">+33 6 00 00 00 00</p>
+          <span id="details-presence">En ligne</span>
+        </section>
+        <section class="details-section">
+          <h3>Media, liens et docs</h3>
+          <div class="media-grid" id="media-grid"></div>
+        </section>
+        <section class="details-section">
+          <h3>Parametres</h3>
+          <button class="setting-row" id="favorite-button" type="button">
+            <span><svg><use href="#i-pin"></use></svg> Favori</span>
+            <strong id="favorite-state">Non</strong>
+          </button>
+          <button class="setting-row" id="archive-button" type="button">
+            <span><svg><use href="#i-archive"></use></svg> Archiver</span>
+            <strong>Local</strong>
+          </button>
+          <div class="encryption-note">
+            <svg><use href="#i-lock"></use></svg>
+            <p>Prototype local. Les messages sont conserves dans le stockage du navigateur.</p>
+          </div>
+        </section>
+      </aside>
+    </div>
+
+    <dialog class="modal" id="new-chat-modal">
+      <form method="dialog" class="modal-card" id="new-chat-form">
+        <header>
+          <h2>Nouveau chat</h2>
+          <button class="icon-button" value="cancel" type="submit" aria-label="Fermer">
+            <svg><use href="#i-x"></use></svg>
+          </button>
+        </header>
+        <label>
+          <span>Nom</span>
+          <input id="new-contact-name" type="text" placeholder="Nom du contact" autocomplete="off" />
+        </label>
+        <label>
+          <span>Telephone</span>
+          <input id="new-contact-phone" type="tel" placeholder="+33 6 00 00 00 00" autocomplete="off" />
+        </label>
+        <label class="checkbox-line">
+          <input id="new-contact-group" type="checkbox" />
+          <span>Creer comme groupe</span>
+        </label>
+        <button class="primary-button" value="default" type="submit">Creer</button>
+      </form>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
