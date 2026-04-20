@@ -1,0 +1,13 @@
+{
+  "name": "greenchat-messenger-clone",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Email-only encrypted chat prototype with a static frontend and optional realtime backend.",
+  "scripts": {
+    "start": "node server/greenchat-server.cjs",
+    "dev": "node server/greenchat-server.cjs"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -899,6 +899,45 @@ svg {
   font-weight: 850;
 }
 
+.secondary-button {
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  color: var(--green);
+  background: #e7fce3;
+  cursor: pointer;
+  font-weight: 850;
+}
+
+.live-card {
+  display: grid;
+  gap: 12px;
+}
+
+.live-url-field {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.84rem;
+  font-weight: 800;
+}
+
+.live-url-field input {
+  min-height: 42px;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--line-dark);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: #fff;
+}
+
+.live-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
 .toast {
   position: fixed;
   left: 50%;

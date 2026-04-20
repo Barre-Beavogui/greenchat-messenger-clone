@@ -3,6 +3,7 @@
 
   const VAULT_PREFIX = "greenchat-vault-v2";
   const META_PREFIX = "greenchat-vault-meta-v2";
+  const LIVE_URL_KEY = "greenchat-live-server-url";
   const AUTO_REPLY_DELAY = 700;
   const RECORDING_DELAY = 1300;
   const KDF_ITERATIONS = 210000;
@@ -15,6 +16,10 @@
   let sessionKey = null;
   let sessionVaultKey = null;
   let sessionMetaKey = null;
+  let sessionUserId = null;
+  let identityPrivateKey = null;
+  let identityPublicKey = null;
+  let liveEvents = null;
   let toastTimer = null;
   let recordingTimer = null;
   let persistTimer = null;
@@ -90,6 +95,14 @@
       filter: "all",
       query: "",
       detailsOpen: true,
+      identity: null,
+      live: {
+        serverUrl: localStorage.getItem(LIVE_URL_KEY) || "",
+        connected: false,
+        status: "Hors ligne",
+        lastSyncAt: 0,
+        seenEnvelopeIds: [],
+      },
       profile: {
         name,
         email,
@@ -261,6 +274,82 @@
     );
   }
 
+  async function ensureIdentityKeys() {
+    if (state.identity?.privateJwk && state.identity?.publicJwk) {
+      identityPrivateKey = await crypto.subtle.importKey(
+        "jwk",
+        state.identity.privateJwk,
+        { name: "ECDH", namedCurve: "P-256" },
+        false,
+        ["deriveKey"],
+      );
+      identityPublicKey = await crypto.subtle.importKey(
+        "jwk",
+        state.identity.publicJwk,
+        { name: "ECDH", namedCurve: "P-256" },
+        true,
+        [],
+      );
+      return;
+    }
+
+    const pair = await crypto.subtle.generateKey(
+      { name: "ECDH", namedCurve: "P-256" },
+      true,
+      ["deriveKey"],
+    );
+    identityPrivateKey = pair.privateKey;
+    identityPublicKey = pair.publicKey;
+    state.identity = {
+      algorithm: "ECDH-P256",
+      privateJwk: await crypto.subtle.exportKey("jwk", pair.privateKey),
+      publicJwk: await crypto.subtle.exportKey("jwk", pair.publicKey),
+      createdAt: new Date().toISOString(),
+    };
+  }
+
+  async function importPeerPublicKey(publicJwk) {
+    return crypto.subtle.importKey(
+      "jwk",
+      publicJwk,
+      { name: "ECDH", namedCurve: "P-256" },
+      false,
+      [],
+    );
+  }
+
+  async function derivePeerMessageKey(peerPublicJwk) {
+    const peerPublicKey = await importPeerPublicKey(peerPublicJwk);
+    return crypto.subtle.deriveKey(
+      { name: "ECDH", public: peerPublicKey },
+      identityPrivateKey,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    );
+  }
+
+  async function encryptForPeer(peerPublicJwk, payload) {
+    const key = await derivePeerMessageKey(peerPublicJwk);
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const cipher = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv },
+      key,
+      encoder.encode(JSON.stringify(payload)),
+    );
+    return { iv: toBase64(iv), payload: toBase64(cipher) };
+  }
+
+  async function decryptFromPeer(senderPublicJwk, envelope) {
+    const key = await derivePeerMessageKey(senderPublicJwk);
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromBase64(envelope.iv) },
+      key,
+      fromBase64(envelope.payload),
+    );
+    return JSON.parse(decoder.decode(plain));
+  }
+
   async function encryptState(data) {
     const iv = crypto.getRandomValues(new Uint8Array(12));
     const encoded = encoder.encode(JSON.stringify(data));
@@ -298,6 +387,7 @@
     }
 
     const emailHash = await sha256Base64(email);
+    sessionUserId = emailHash;
     sessionMetaKey = `${META_PREFIX}:${emailHash}`;
     sessionVaultKey = `${VAULT_PREFIX}:${emailHash}`;
 
@@ -313,6 +403,7 @@
       localStorage.setItem(sessionMetaKey, JSON.stringify(meta));
       sessionKey = await deriveKey(email, secret, salt);
       state = makeSeed(email);
+      await ensureIdentityKeys();
       await persistNow();
       return;
     }
@@ -321,12 +412,18 @@
     const vault = JSON.parse(localStorage.getItem(sessionVaultKey) || "null");
     if (!vault) {
       state = makeSeed(email);
+      await ensureIdentityKeys();
       await persistNow();
       return;
     }
 
-    state = await decryptState(vault);
+    try {
+      state = await decryptState(vault);
+    } catch {
+      throw new Error("Email ou phrase secrete incorrecte");
+    }
     migrateState(email);
+    await ensureIdentityKeys();
   }
 
   function migrateState(email) {
@@ -341,6 +438,13 @@
       delete rest.phone;
       return { ...rest, email: legacyEmail };
     });
+    state.live = {
+      serverUrl: localStorage.getItem(LIVE_URL_KEY) || state.live?.serverUrl || "",
+      connected: false,
+      status: "Hors ligne",
+      lastSyncAt: state.live?.lastSyncAt || 0,
+      seenEnvelopeIds: Array.isArray(state.live?.seenEnvelopeIds) ? state.live.seenEnvelopeIds : [],
+    };
     state.version = 2;
   }
 
@@ -360,6 +464,185 @@
     persistTimer = window.setTimeout(() => {
       void persistNow();
     }, 80);
+  }
+
+  function normalizeServerUrl(value) {
+    return value.trim().replace(/\/+$/, "");
+  }
+
+  function apiUrl(path) {
+    return `${normalizeServerUrl(state.live.serverUrl)}${path}`;
+  }
+
+  function setLiveStatus(status, connected = false) {
+    state.live.status = status;
+    state.live.connected = connected;
+    renderChrome();
+    schedulePersist();
+  }
+
+  async function liveRequest(path, options = {}) {
+    if (!state.live.serverUrl) {
+      throw new Error("URL serveur manquante");
+    }
+    const response = await fetch(apiUrl(path), {
+      ...options,
+      headers: {
+        "Content-Type": "application/json",
+        ...(options.headers || {}),
+      },
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      throw new Error(payload.error || `Erreur serveur ${response.status}`);
+    }
+    return payload;
+  }
+
+  async function connectLive() {
+    if (!state.live.serverUrl) {
+      throw new Error("Ajoutez une URL serveur");
+    }
+    await ensureIdentityKeys();
+    await liveRequest("/api/register", {
+      method: "POST",
+      body: JSON.stringify({
+        userId: sessionUserId,
+        publicKey: state.identity.publicJwk,
+        label: state.profile.initials,
+      }),
+    });
+    await syncLiveMessages();
+    openLiveEvents();
+    setLiveStatus("Connecte au serveur chiffre", true);
+    showToast("Temps reel chiffre connecte");
+  }
+
+  function disconnectLive() {
+    if (liveEvents) {
+      liveEvents.close();
+      liveEvents = null;
+    }
+    setLiveStatus("Hors ligne", false);
+    showToast("Temps reel deconnecte");
+  }
+
+  function openLiveEvents() {
+    if (liveEvents) liveEvents.close();
+    liveEvents = new EventSource(apiUrl(`/api/events/${sessionUserId}`));
+    liveEvents.addEventListener("ready", () => setLiveStatus("Connecte au serveur chiffre", true));
+    liveEvents.addEventListener("message", (event) => {
+      guarded("live-message", async () => {
+        await processEnvelope(JSON.parse(event.data));
+      });
+    });
+    liveEvents.onerror = () => {
+      setLiveStatus("Reconnexion en cours", false);
+    };
+  }
+
+  async function syncLiveMessages() {
+    const result = await liveRequest(`/api/messages/${sessionUserId}?since=${Number(state.live.lastSyncAt || 0)}`);
+    for (const envelope of result.messages || []) {
+      await processEnvelope(envelope);
+    }
+    state.live.lastSyncAt = result.serverTime || Date.now();
+    schedulePersist();
+  }
+
+  async function fetchPeerPublicKey(peerId) {
+    const payload = await liveRequest(`/api/users/${peerId}/public-key`);
+    return payload.publicKey;
+  }
+
+  function rememberEnvelope(id) {
+    if (!id) return false;
+    if (state.live.seenEnvelopeIds.includes(id)) return false;
+    state.live.seenEnvelopeIds.push(id);
+    if (state.live.seenEnvelopeIds.length > 600) {
+      state.live.seenEnvelopeIds = state.live.seenEnvelopeIds.slice(-600);
+    }
+    return true;
+  }
+
+  async function sendLiveMessage(chat, localMessage) {
+    if (!state.live.connected || !state.live.serverUrl || chat.group) return false;
+    const peerId = chat.peerId || (await sha256Base64(normalizeEmail(chat.email)));
+    chat.peerId = peerId;
+    let publicKey;
+    try {
+      publicKey = await fetchPeerPublicKey(peerId);
+    } catch {
+      showToast("Contact non connecte au serveur chiffre");
+      return false;
+    }
+
+    const envelopeId = createId();
+    const encrypted = await encryptForPeer(publicKey, {
+      id: localMessage.id,
+      text: localMessage.text,
+      kind: localMessage.kind,
+      fromName: state.profile.name,
+      fromEmail: state.profile.email,
+      sentAt: localMessage.at,
+    });
+
+    await liveRequest("/api/messages", {
+      method: "POST",
+      body: JSON.stringify({
+        id: envelopeId,
+        from: sessionUserId,
+        to: peerId,
+        senderPublicKey: state.identity.publicJwk,
+        sentAt: localMessage.at,
+        ...encrypted,
+      }),
+    });
+    rememberEnvelope(envelopeId);
+    return true;
+  }
+
+  async function processEnvelope(envelope) {
+    if (!envelope || envelope.to !== sessionUserId || !rememberEnvelope(envelope.id)) return;
+    const payload = await decryptFromPeer(envelope.senderPublicKey, envelope);
+    const chat = findOrCreatePeerChat(envelope.from, payload);
+    if (chat.messages.some((item) => item.remoteId === envelope.id || item.id === payload.id)) return;
+    chat.messages.push({
+      id: payload.id || createId(),
+      remoteId: envelope.id,
+      from: "them",
+      text: payload.text || "",
+      at: payload.sentAt || envelope.sentAt || Date.now(),
+      kind: payload.kind || "text",
+    });
+    if (state.activeChatId !== chat.id) chat.unread = (chat.unread || 0) + 1;
+    render();
+  }
+
+  function findOrCreatePeerChat(peerId, payload) {
+    let chat = state.chats.find((item) => item.peerId === peerId || item.email === payload.fromEmail);
+    if (chat) {
+      chat.peerId = peerId;
+      return chat;
+    }
+    const name = payload.fromName || displayNameFromEmail(payload.fromEmail || `${peerId}@anonymous.local`);
+    chat = {
+      id: `peer-${peerId.slice(0, 16)}`,
+      peerId,
+      name,
+      email: payload.fromEmail || `${peerId}@anonymous.greenchat.local`,
+      initials: initialsFromName(name),
+      color: colors[state.chats.length % colors.length],
+      presence: "recu via serveur chiffre",
+      group: false,
+      pinned: false,
+      favorite: false,
+      unread: 0,
+      media: 1,
+      messages: [message("system", "Contact cree automatiquement depuis un message chiffre.", Date.now())],
+    };
+    state.chats.unshift(chat);
+    return chat;
   }
 
   function guarded(label, fn) {
@@ -411,6 +694,14 @@
     toastTimer = window.setTimeout(() => {
       els.toast.classList.remove("is-visible");
     }, 1900);
+  }
+
+  function escapeHtml(value) {
+    return String(value)
+      .replaceAll("&", "&amp;")
+      .replaceAll('"', "&quot;")
+      .replaceAll("<", "&lt;")
+      .replaceAll(">", "&gt;");
   }
 
   function unlockUi() {
@@ -655,7 +946,7 @@
       ["Identite", "Connexion par email uniquement. Aucun numero de telephone."],
       ["Chiffrement", "Stockage local chiffre AES-GCM avec cle derivee de votre phrase secrete."],
       ["Anonymat", "Utilisez un alias email. L'app ne verifie pas votre identite et n'envoie rien a un serveur."],
-      ["Limite", "Cette version GitHub Pages est locale. Le vrai temps reel multi-utilisateur necessite un backend E2EE."],
+      ["Temps reel", "Renseignez l'URL du serveur GreenChat pour synchroniser des enveloppes chiffrees entre utilisateurs."],
     ];
 
     cards.forEach(([head, text]) => {
@@ -668,6 +959,22 @@
       card.append(h, p);
       wrap.append(card);
     });
+
+    const live = document.createElement("article");
+    live.className = "settings-card live-card";
+    live.innerHTML = `
+      <h2>Serveur chiffre</h2>
+      <p>${state.live.status}</p>
+      <label class="live-url-field">
+        <span>URL backend</span>
+        <input type="url" data-live-url value="${escapeHtml(state.live.serverUrl || "")}" placeholder="https://votre-serveur.example.com" />
+      </label>
+      <div class="live-actions">
+        <button class="primary-button" type="button" data-live-connect>Connecter</button>
+        <button class="secondary-button" type="button" data-live-disconnect>Deconnecter</button>
+      </div>
+    `;
+    wrap.append(live);
 
     els.sideContent.append(wrap);
   }
@@ -761,18 +1068,23 @@
   }
 
   function appendMessage(chat, from, text, kind = "text") {
-    chat.messages.push(message(from, text, Date.now(), kind));
+    const created = message(from, text, Date.now(), kind);
+    chat.messages.push(created);
+    return created;
   }
 
   function sendMessage(text) {
     const clean = text.trim();
     if (!clean) return;
     const chat = activeChat();
-    appendMessage(chat, "me", clean);
+    const created = appendMessage(chat, "me", clean);
     els.input.value = "";
     resizeInput();
     render();
-    queueReply(chat.id, clean);
+    guarded("live-send", async () => {
+      const sentLive = await sendLiveMessage(chat, created);
+      if (!sentLive) queueReply(chat.id, clean);
+    });
   }
 
   function queueReply(chatId, text) {
@@ -880,11 +1192,14 @@
     recordingTimer = window.setTimeout(() => {
       guarded("voice-message", () => {
         const chat = activeChat();
-        appendMessage(chat, "me", "Message vocal", "audio");
+        const created = appendMessage(chat, "me", "Message vocal", "audio");
         els.voiceButton.classList.remove("is-recording");
         recordingTimer = null;
         render();
-        queueReply(chat.id, "vocal");
+        guarded("live-voice", async () => {
+          const sentLive = await sendLiveMessage(chat, created);
+          if (!sentLive) queueReply(chat.id, "vocal");
+        });
       });
     }, RECORDING_DELAY);
   }
@@ -931,7 +1246,25 @@
     });
 
     els.sideContent.addEventListener("click", (event) => {
-      guarded("side-click", () => {
+      guarded("side-click", async () => {
+        const liveConnect = event.target.closest("[data-live-connect]");
+        if (liveConnect) {
+          const input = els.sideContent.querySelector("[data-live-url]");
+          state.live.serverUrl = normalizeServerUrl(input?.value || "");
+          localStorage.setItem(LIVE_URL_KEY, state.live.serverUrl);
+          setLiveStatus("Connexion...", false);
+          await connectLive();
+          render();
+          return;
+        }
+
+        const liveDisconnect = event.target.closest("[data-live-disconnect]");
+        if (liveDisconnect) {
+          disconnectLive();
+          render();
+          return;
+        }
+
         const follow = event.target.closest("[data-channel-toggle]");
         if (follow) {
           toggleChannel(follow.dataset.channelToggle);
@@ -985,10 +1318,14 @@
     els.attachButton.addEventListener("click", () => {
       guarded("attachment", () => {
         const chat = activeChat();
-        appendMessage(chat, "me", "Piece jointe chiffree: image-demo.png", "attachment");
+        const created = appendMessage(chat, "me", "Piece jointe chiffree: image-demo.png", "attachment");
         chat.media = (chat.media || 0) + 1;
         showToast("Piece jointe chiffree ajoutee");
         render();
+        guarded("live-attachment", async () => {
+          const sentLive = await sendLiveMessage(chat, created);
+          if (!sentLive) queueReply(chat.id, "fichier");
+        });
       });
     });
 
