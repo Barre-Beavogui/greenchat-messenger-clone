@@ -1,50 +1,125 @@
 (() => {
   "use strict";
 
-  const STORAGE_KEY = "greenchat-state-v1";
+  const VAULT_PREFIX = "greenchat-vault-v2";
+  const META_PREFIX = "greenchat-vault-meta-v2";
   const AUTO_REPLY_DELAY = 700;
   const RECORDING_DELAY = 1300;
+  const KDF_ITERATIONS = 210000;
 
+  const encoder = new TextEncoder();
+  const decoder = new TextDecoder();
   const colors = ["green", "teal", "blue", "amber", "purple", "red"];
 
-  function makeSeed() {
+  let state = null;
+  let sessionKey = null;
+  let sessionVaultKey = null;
+  let sessionMetaKey = null;
+  let toastTimer = null;
+  let recordingTimer = null;
+  let persistTimer = null;
+
+  const els = {
+    authScreen: document.getElementById("auth-screen"),
+    authForm: document.getElementById("auth-form"),
+    authEmail: document.getElementById("auth-email"),
+    authSecret: document.getElementById("auth-secret"),
+    shell: document.getElementById("app-shell"),
+    viewTitle: document.getElementById("view-title"),
+    sideContent: document.getElementById("side-content"),
+    filterTabs: document.getElementById("filter-tabs"),
+    search: document.getElementById("search-input"),
+    thread: document.getElementById("message-thread"),
+    activeAvatar: document.getElementById("active-avatar"),
+    activeName: document.getElementById("active-name"),
+    activeStatus: document.getElementById("active-status"),
+    detailsPanel: document.getElementById("details-panel"),
+    detailsAvatar: document.getElementById("details-avatar"),
+    detailsName: document.getElementById("details-name"),
+    detailsIdentity: document.getElementById("details-identity"),
+    detailsEmail: document.getElementById("details-email"),
+    detailsPresence: document.getElementById("details-presence"),
+    mediaGrid: document.getElementById("media-grid"),
+    favoriteButton: document.getElementById("favorite-button"),
+    favoriteState: document.getElementById("favorite-state"),
+    archiveButton: document.getElementById("archive-button"),
+    detailsButton: document.getElementById("details-button"),
+    openDetailsButton: document.getElementById("open-details-button"),
+    closeDetailsButton: document.getElementById("close-details-button"),
+    composer: document.getElementById("composer"),
+    input: document.getElementById("message-input"),
+    emojiButton: document.getElementById("emoji-button"),
+    attachButton: document.getElementById("attach-button"),
+    voiceButton: document.getElementById("voice-button"),
+    callButton: document.getElementById("call-button"),
+    videoButton: document.getElementById("video-button"),
+    profileButton: document.getElementById("profile-button"),
+    newChatButton: document.getElementById("new-chat-button"),
+    modal: document.getElementById("new-chat-modal"),
+    newChatForm: document.getElementById("new-chat-form"),
+    newName: document.getElementById("new-contact-name"),
+    newEmail: document.getElementById("new-contact-email"),
+    newGroup: document.getElementById("new-contact-group"),
+    toast: document.getElementById("toast"),
+  };
+
+  function normalizeEmail(email) {
+    return email.trim().toLowerCase();
+  }
+
+  function initialsFromName(value) {
+    const source = value.includes("@") ? value.split("@")[0] : value;
+    const parts = source.replace(/[^a-zA-Z0-9 ]/g, " ").split(/\s+/).filter(Boolean);
+    return (parts.slice(0, 2).map((part) => part[0].toUpperCase()).join("") || "GC").slice(0, 2);
+  }
+
+  function displayNameFromEmail(email) {
+    const local = email.split("@")[0] || "anonyme";
+    return local
+      .replace(/[._-]+/g, " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }
+
+  function makeSeed(email) {
     const base = Date.now();
+    const name = displayNameFromEmail(email);
     return {
+      version: 2,
       activeView: "chats",
       activeChatId: "family",
       filter: "all",
       query: "",
       detailsOpen: true,
       profile: {
-        name: "Tesla Beavogui",
-        phone: "+33 6 12 34 56 78",
-        initials: "TB",
+        name,
+        email,
+        initials: initialsFromName(name),
       },
       chats: [
         {
           id: "family",
           name: "Famille",
-          phone: "Groupe",
+          email: "famille@group.greenchat.local",
           initials: "FA",
           color: "green",
-          presence: "5 membres, 2 en ligne",
+          presence: "groupe prive, 5 membres",
           group: true,
           pinned: true,
           favorite: true,
           unread: 3,
           media: 7,
           messages: [
-            message("system", "Groupe cree localement. Les donnees restent dans ce navigateur.", base - 1000 * 60 * 90),
+            message("system", "Groupe chiffre localement. Aucun numero de telephone n'est utilise.", base - 1000 * 60 * 90),
             message("them", "Tu peux m'envoyer les documents ce soir ?", base - 1000 * 60 * 66),
             message("me", "Oui, je les prepare et je t'envoie ca.", base - 1000 * 60 * 62),
             message("them", "Parfait, merci.", base - 1000 * 60 * 30),
           ],
         },
         {
-          id: "crash-room",
-          name: "Cellule incident",
-          phone: "+33 6 27 44 10 90",
-          initials: "CI",
+          id: "security",
+          name: "Audit chiffrement",
+          email: "audit@greenchat.local",
+          initials: "AC",
           color: "red",
           presence: "en ligne",
           group: false,
@@ -53,15 +128,15 @@
           unread: 1,
           media: 4,
           messages: [
-            message("them", "Le crash arrive quand l'app sort du plein ecran.", base - 1000 * 60 * 230),
-            message("me", "Je recode une version web locale avec les actions UI isolees.", base - 1000 * 60 * 226),
-            message("system", "Signature: SIGTRAP sur main thread pendant une transition AppKit.", base - 1000 * 60 * 220),
+            message("them", "L'identite se fait par email + phrase secrete.", base - 1000 * 60 * 230),
+            message("me", "Les discussions sont chiffrees avant stockage local avec AES-GCM.", base - 1000 * 60 * 226),
+            message("system", "Aucun numero n'est demande. Utilisez un alias email pour plus de confidentialite.", base - 1000 * 60 * 220),
           ],
         },
         {
           id: "amina",
           name: "Amina Diallo",
-          phone: "+33 7 19 63 80 22",
+          email: "amina.alias@example.com",
           initials: "AD",
           color: "purple",
           presence: "vue aujourd'hui a 00:14",
@@ -72,16 +147,16 @@
           media: 12,
           messages: [
             message("them", "On se voit demain ?", base - 1000 * 60 * 180),
-            message("me", "Oui, appelle-moi avant de partir.", base - 1000 * 60 * 174),
+            message("me", "Oui, envoie-moi un mail avant de partir.", base - 1000 * 60 * 174),
           ],
         },
         {
           id: "school",
           name: "Projet ecole",
-          phone: "Groupe",
+          email: "projet-ecole@group.greenchat.local",
           initials: "PE",
           color: "blue",
-          presence: "8 membres",
+          presence: "groupe prive, 8 membres",
           group: true,
           pinned: false,
           favorite: false,
@@ -95,7 +170,7 @@
         {
           id: "moussa",
           name: "Moussa K.",
-          phone: "+224 622 18 44 09",
+          email: "moussa.secure@example.com",
           initials: "MK",
           color: "amber",
           presence: "en ligne",
@@ -111,18 +186,18 @@
         },
       ],
       statuses: [
-        { id: "me", name: "Mon statut", initials: "TB", color: "teal", meta: "Ajouter une mise a jour", mine: true },
+        { id: "me", name: "Mon statut", initials: initialsFromName(name), color: "teal", meta: "Identite email seulement", mine: true },
         { id: "amina-status", name: "Amina Diallo", initials: "AD", color: "purple", meta: "Aujourd'hui a 00:10" },
         { id: "moussa-status", name: "Moussa K.", initials: "MK", color: "amber", meta: "Hier a 21:32" },
         { id: "school-status", name: "Projet ecole", initials: "PE", color: "blue", meta: "Hier a 18:07" },
       ],
       calls: [
         { id: "c1", chatId: "amina", name: "Amina Diallo", initials: "AD", color: "purple", kind: "video", direction: "in", at: base - 1000 * 60 * 120 },
-        { id: "c2", chatId: "crash-room", name: "Cellule incident", initials: "CI", color: "red", kind: "audio", direction: "missed", at: base - 1000 * 60 * 210 },
+        { id: "c2", chatId: "security", name: "Audit chiffrement", initials: "AC", color: "red", kind: "audio", direction: "missed", at: base - 1000 * 60 * 210 },
         { id: "c3", chatId: "moussa", name: "Moussa K.", initials: "MK", color: "amber", kind: "audio", direction: "out", at: base - 1000 * 60 * 620 },
       ],
       channels: [
-        { id: "tech", title: "Tech Updates", initials: "TU", color: "blue", followers: "18k", followed: true, last: "Nouvelle build disponible." },
+        { id: "privacy", title: "Privacy Updates", initials: "PU", color: "blue", followers: "18k", followed: true, last: "Conseil: utilisez un alias email." },
         { id: "news", title: "Actu locale", initials: "AL", color: "green", followers: "9k", followed: false, last: "Resume de la journee." },
         { id: "design", title: "Design Lab", initials: "DL", color: "purple", followers: "42k", followed: false, last: "Nouveau kit UI publie." },
       ],
@@ -139,76 +214,152 @@
     };
   }
 
-  const els = {
-    shell: document.getElementById("app-shell"),
-    viewTitle: document.getElementById("view-title"),
-    sideContent: document.getElementById("side-content"),
-    filterTabs: document.getElementById("filter-tabs"),
-    search: document.getElementById("search-input"),
-    thread: document.getElementById("message-thread"),
-    activeAvatar: document.getElementById("active-avatar"),
-    activeName: document.getElementById("active-name"),
-    activeStatus: document.getElementById("active-status"),
-    detailsPanel: document.getElementById("details-panel"),
-    detailsAvatar: document.getElementById("details-avatar"),
-    detailsName: document.getElementById("details-name"),
-    detailsPhone: document.getElementById("details-phone"),
-    detailsPresence: document.getElementById("details-presence"),
-    mediaGrid: document.getElementById("media-grid"),
-    favoriteButton: document.getElementById("favorite-button"),
-    favoriteState: document.getElementById("favorite-state"),
-    archiveButton: document.getElementById("archive-button"),
-    detailsButton: document.getElementById("details-button"),
-    openDetailsButton: document.getElementById("open-details-button"),
-    closeDetailsButton: document.getElementById("close-details-button"),
-    composer: document.getElementById("composer"),
-    input: document.getElementById("message-input"),
-    emojiButton: document.getElementById("emoji-button"),
-    attachButton: document.getElementById("attach-button"),
-    voiceButton: document.getElementById("voice-button"),
-    callButton: document.getElementById("call-button"),
-    videoButton: document.getElementById("video-button"),
-    newChatButton: document.getElementById("new-chat-button"),
-    modal: document.getElementById("new-chat-modal"),
-    newChatForm: document.getElementById("new-chat-form"),
-    newName: document.getElementById("new-contact-name"),
-    newPhone: document.getElementById("new-contact-phone"),
-    newGroup: document.getElementById("new-contact-group"),
-    toast: document.getElementById("toast"),
-  };
+  function createId() {
+    if (window.crypto && typeof window.crypto.randomUUID === "function") {
+      return window.crypto.randomUUID();
+    }
+    return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
 
-  let state = loadState();
-  let toastTimer = null;
-  let recordingTimer = null;
+  function toBase64(bytes) {
+    const view = new Uint8Array(bytes);
+    let binary = "";
+    for (let index = 0; index < view.length; index += 1) {
+      binary += String.fromCharCode(view[index]);
+    }
+    return btoa(binary);
+  }
 
-  function loadState() {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (!raw) return makeSeed();
-      const parsed = JSON.parse(raw);
-      const seed = makeSeed();
-      return {
-        ...seed,
-        ...parsed,
-        profile: { ...seed.profile, ...(parsed.profile || {}) },
-        chats: Array.isArray(parsed.chats) ? parsed.chats : seed.chats,
-        statuses: Array.isArray(parsed.statuses) ? parsed.statuses : seed.statuses,
-        calls: Array.isArray(parsed.calls) ? parsed.calls : seed.calls,
-        channels: Array.isArray(parsed.channels) ? parsed.channels : seed.channels,
+  function fromBase64(value) {
+    return Uint8Array.from(atob(value), (char) => char.charCodeAt(0));
+  }
+
+  async function sha256Base64(value) {
+    const digest = await crypto.subtle.digest("SHA-256", encoder.encode(value));
+    return toBase64(digest).replaceAll("/", "_").replaceAll("+", "-").replaceAll("=", "");
+  }
+
+  async function deriveKey(email, secret, salt) {
+    const material = await crypto.subtle.importKey(
+      "raw",
+      encoder.encode(`${email}\n${secret}`),
+      "PBKDF2",
+      false,
+      ["deriveKey"],
+    );
+    return crypto.subtle.deriveKey(
+      {
+        name: "PBKDF2",
+        salt,
+        iterations: KDF_ITERATIONS,
+        hash: "SHA-256",
+      },
+      material,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt", "decrypt"],
+    );
+  }
+
+  async function encryptState(data) {
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const encoded = encoder.encode(JSON.stringify(data));
+    const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, sessionKey, encoded);
+    return {
+      version: 2,
+      algorithm: "AES-GCM",
+      kdf: "PBKDF2-SHA256",
+      iterations: KDF_ITERATIONS,
+      iv: toBase64(iv),
+      payload: toBase64(cipher),
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  async function decryptState(vault) {
+    const plain = await crypto.subtle.decrypt(
+      { name: "AES-GCM", iv: fromBase64(vault.iv) },
+      sessionKey,
+      fromBase64(vault.payload),
+    );
+    return JSON.parse(decoder.decode(plain));
+  }
+
+  async function unlockVault(emailInput, secret) {
+    const email = normalizeEmail(emailInput);
+    if (!crypto.subtle) {
+      throw new Error("Web Crypto indisponible dans ce navigateur");
+    }
+    if (!email || !email.includes("@")) {
+      throw new Error("Email invalide");
+    }
+    if (!secret || secret.length < 8) {
+      throw new Error("Phrase secrete trop courte");
+    }
+
+    const emailHash = await sha256Base64(email);
+    sessionMetaKey = `${META_PREFIX}:${emailHash}`;
+    sessionVaultKey = `${VAULT_PREFIX}:${emailHash}`;
+
+    let meta = JSON.parse(localStorage.getItem(sessionMetaKey) || "null");
+    if (!meta) {
+      const salt = crypto.getRandomValues(new Uint8Array(16));
+      meta = {
+        version: 2,
+        salt: toBase64(salt),
+        iterations: KDF_ITERATIONS,
+        createdAt: new Date().toISOString(),
       };
+      localStorage.setItem(sessionMetaKey, JSON.stringify(meta));
+      sessionKey = await deriveKey(email, secret, salt);
+      state = makeSeed(email);
+      await persistNow();
+      return;
+    }
+
+    sessionKey = await deriveKey(email, secret, fromBase64(meta.salt));
+    const vault = JSON.parse(localStorage.getItem(sessionVaultKey) || "null");
+    if (!vault) {
+      state = makeSeed(email);
+      await persistNow();
+      return;
+    }
+
+    state = await decryptState(vault);
+    migrateState(email);
+  }
+
+  function migrateState(email) {
+    state.profile = {
+      name: state.profile?.name || displayNameFromEmail(email),
+      email: state.profile?.email || email,
+      initials: state.profile?.initials || initialsFromName(email),
+    };
+    state.chats = (state.chats || []).map((chat) => {
+      const legacyEmail = chat.email || (chat.group ? `${chat.id}@group.greenchat.local` : `${chat.id}@contact.greenchat.local`);
+      const rest = { ...chat };
+      delete rest.phone;
+      return { ...rest, email: legacyEmail };
+    });
+    state.version = 2;
+  }
+
+  async function persistNow() {
+    if (!state || !sessionKey || !sessionVaultKey) return;
+    try {
+      const vault = await encryptState(state);
+      localStorage.setItem(sessionVaultKey, JSON.stringify(vault));
     } catch (error) {
-      console.warn("Impossible de restaurer l'etat", error);
-      return makeSeed();
+      console.warn("Sauvegarde chiffree impossible", error);
+      showToast("Sauvegarde chiffree indisponible");
     }
   }
 
-  function persist() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch (error) {
-      console.warn("Sauvegarde locale impossible", error);
-      showToast("Sauvegarde locale indisponible");
-    }
+  function schedulePersist() {
+    window.clearTimeout(persistTimer);
+    persistTimer = window.setTimeout(() => {
+      void persistNow();
+    }, 80);
   }
 
   function guarded(label, fn) {
@@ -225,16 +376,9 @@
 
   function handleError(label, error) {
     console.error(label, error);
-    showToast(`Action isolee: ${label}`);
-    persist();
+    showToast(label === "unlock" ? error.message : `Action isolee: ${label}`);
+    schedulePersist();
     return null;
-  }
-
-  function createId() {
-    if (window.crypto && typeof window.crypto.randomUUID === "function") {
-      return window.crypto.randomUUID();
-    }
-    return `id-${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
   function activeChat() {
@@ -261,20 +405,28 @@
   }
 
   function showToast(text) {
-    clearTimeout(toastTimer);
+    window.clearTimeout(toastTimer);
     els.toast.textContent = text;
     els.toast.classList.add("is-visible");
     toastTimer = window.setTimeout(() => {
       els.toast.classList.remove("is-visible");
-    }, 1800);
+    }, 1900);
+  }
+
+  function unlockUi() {
+    els.authScreen.classList.add("is-hidden");
+    els.shell.classList.remove("is-locked");
+    els.shell.removeAttribute("aria-hidden");
+    els.profileButton.textContent = state.profile.initials;
   }
 
   function render() {
+    if (!state) return;
     renderChrome();
     renderChat();
     renderSideContent();
     renderDetails();
-    persist();
+    schedulePersist();
   }
 
   function renderChrome() {
@@ -293,7 +445,7 @@
     els.filterTabs.hidden = state.activeView !== "chats";
     els.search.placeholder =
       state.activeView === "chats"
-        ? "Rechercher ou demarrer une discussion"
+        ? "Rechercher par email, alias ou message"
         : "Rechercher";
 
     document.querySelectorAll(".filter-tab").forEach((button) => {
@@ -305,7 +457,6 @@
 
   function renderSideContent() {
     els.sideContent.replaceChildren();
-
     if (state.activeView === "chats") renderChatList();
     if (state.activeView === "status") renderStatusList();
     if (state.activeView === "calls") renderCallList();
@@ -318,7 +469,7 @@
     const chats = state.chats
       .filter((chat) => {
         const last = lastMessage(chat);
-        const searchable = `${chat.name} ${chat.phone} ${last ? last.text : ""}`.toLowerCase();
+        const searchable = `${chat.name} ${chat.email} ${last ? last.text : ""}`.toLowerCase();
         const matchesQuery = !query || searchable.includes(query);
         const matchesFilter =
           state.filter === "all" ||
@@ -339,50 +490,51 @@
       item.type = "button";
       item.className = `chat-item${chat.id === state.activeChatId ? " is-active" : ""}`;
       item.dataset.chatId = chat.id;
-
-      const avatar = makeAvatar(chat);
-      const body = document.createElement("div");
-      body.className = "chat-body";
-
-      const line = document.createElement("div");
-      line.className = "chat-line";
-      const name = document.createElement("p");
-      name.className = "chat-name";
-      name.textContent = chat.name;
-      const time = document.createElement("span");
-      time.className = "chat-time";
-      time.textContent = formatTime(lastMessage(chat).at);
-      line.append(name, time);
-
-      const preview = document.createElement("p");
-      preview.className = "chat-preview";
-      preview.textContent = previewText(lastMessage(chat));
-
-      body.append(line, preview);
-
-      const meta = document.createElement("div");
-      meta.className = "chat-meta";
-      if (chat.unread > 0) {
-        const unread = document.createElement("span");
-        unread.className = "unread";
-        unread.textContent = String(chat.unread);
-        meta.append(unread);
-      } else if (chat.pinned) {
-        const pin = document.createElement("span");
-        pin.className = "pin-badge";
-        pin.innerHTML = '<svg><use href="#i-pin"></use></svg>';
-        meta.append(pin);
-      }
-
-      item.append(avatar, body, meta);
+      item.append(makeAvatar(chat), makeChatBody(chat), makeChatMeta(chat));
       els.sideContent.append(item);
     });
   }
 
+  function makeChatBody(chat) {
+    const body = document.createElement("div");
+    body.className = "chat-body";
+    const line = document.createElement("div");
+    line.className = "chat-line";
+    const name = document.createElement("p");
+    name.className = "chat-name";
+    name.textContent = chat.name;
+    const time = document.createElement("span");
+    time.className = "chat-time";
+    time.textContent = formatTime(lastMessage(chat).at);
+    line.append(name, time);
+    const preview = document.createElement("p");
+    preview.className = "chat-preview";
+    preview.textContent = previewText(lastMessage(chat));
+    body.append(line, preview);
+    return body;
+  }
+
+  function makeChatMeta(chat) {
+    const meta = document.createElement("div");
+    meta.className = "chat-meta";
+    if (chat.unread > 0) {
+      const unread = document.createElement("span");
+      unread.className = "unread";
+      unread.textContent = String(chat.unread);
+      meta.append(unread);
+    } else if (chat.pinned) {
+      const pin = document.createElement("span");
+      pin.className = "pin-badge";
+      pin.innerHTML = '<svg><use href="#i-pin"></use></svg>';
+      meta.append(pin);
+    }
+    return meta;
+  }
+
   function previewText(msg) {
     if (!msg) return "";
-    if (msg.kind === "audio") return "Message vocal";
-    if (msg.kind === "attachment") return "Piece jointe";
+    if (msg.kind === "audio") return "Message vocal chiffre";
+    if (msg.kind === "attachment") return "Piece jointe chiffree";
     return msg.text;
   }
 
@@ -397,7 +549,6 @@
       item.type = "button";
       item.className = "status-item";
       item.dataset.statusId = status.id;
-      const avatar = makeAvatar(status, !status.mine);
       const body = document.createElement("div");
       body.className = "status-body";
       const name = document.createElement("p");
@@ -407,7 +558,7 @@
       meta.className = "status-meta";
       meta.textContent = status.meta;
       body.append(name, meta);
-      item.append(avatar, body);
+      item.append(makeAvatar(status, !status.mine), body);
       els.sideContent.append(item);
     });
   }
@@ -434,7 +585,6 @@
       time.className = "chat-time";
       time.textContent = formatTime(call.at);
       line.append(name, time);
-
       const meta = document.createElement("p");
       meta.className = `call-meta call-direction ${call.direction}`;
       meta.textContent = callLabel(call);
@@ -442,8 +592,7 @@
 
       const icon = document.createElement("span");
       icon.className = "pin-badge";
-      icon.innerHTML = call.kind === "video" ? '<svg><use href="#i-video"></use></svg>' : '<svg><use href="#i-phone"></use></svg>';
-
+      icon.innerHTML = call.kind === "video" ? '<svg><use href="#i-video"></use></svg>' : '<svg><use href="#i-audio"></use></svg>';
       item.append(body, icon);
       els.sideContent.append(item);
     });
@@ -451,8 +600,8 @@
 
   function callLabel(call) {
     if (call.direction === "missed") return "Manque";
-    if (call.direction === "out") return "Sortant";
-    return "Entrant";
+    if (call.direction === "out") return "Sortant chiffre";
+    return "Entrant chiffre";
   }
 
   function renderChannelList() {
@@ -478,7 +627,6 @@
       followers.className = "chat-time";
       followers.textContent = channel.followers;
       line.append(title, followers);
-
       const meta = document.createElement("p");
       meta.className = "channel-meta";
       meta.textContent = channel.last;
@@ -500,13 +648,14 @@
     const title = document.createElement("h2");
     title.textContent = state.profile.name;
     const body = document.createElement("p");
-    body.textContent = `${state.profile.phone} - ${state.chats.length} discussions locales`;
+    body.textContent = `${state.profile.email} - ${state.chats.length} discussions chiffrees`;
     wrap.append(title, body);
 
     const cards = [
-      ["Compte", "Profil local, aucune connexion serveur."],
-      ["Confidentialite", "Les donnees restent dans localStorage."],
-      ["Notifications", "Simulation locale des messages entrants."],
+      ["Identite", "Connexion par email uniquement. Aucun numero de telephone."],
+      ["Chiffrement", "Stockage local chiffre AES-GCM avec cle derivee de votre phrase secrete."],
+      ["Anonymat", "Utilisez un alias email. L'app ne verifie pas votre identite et n'envoie rien a un serveur."],
+      ["Limite", "Cette version GitHub Pages est locale. Le vrai temps reel multi-utilisateur necessite un backend E2EE."],
     ];
 
     cards.forEach(([head, text]) => {
@@ -542,7 +691,7 @@
     els.activeAvatar.className = `avatar avatar-lg ${chat.color || "green"}`;
     els.activeAvatar.textContent = chat.initials;
     els.activeName.textContent = chat.name;
-    els.activeStatus.textContent = chat.presence;
+    els.activeStatus.textContent = `${chat.presence} - email uniquement`;
 
     els.thread.replaceChildren();
     const day = document.createElement("div");
@@ -554,10 +703,10 @@
       const bubble = document.createElement("article");
       bubble.className = `message ${msg.from === "me" ? "me" : msg.from === "system" ? "system" : ""}`;
       const p = document.createElement("p");
-      p.textContent = msg.kind === "audio" ? "Message vocal - 0:08" : msg.text;
+      p.textContent = msg.kind === "audio" ? "Message vocal chiffre - 0:08" : msg.text;
       const meta = document.createElement("span");
       meta.className = "message-meta";
-      meta.append(document.createTextNode(formatTime(msg.at)));
+      meta.append(document.createTextNode(`${formatTime(msg.at)} - chiffre`));
       if (msg.from === "me") {
         const check = document.createElement("span");
         check.innerHTML = '<svg><use href="#i-check"></use></svg>';
@@ -580,7 +729,8 @@
     els.detailsAvatar.className = `profile-avatar ${chat.color || "green"}`;
     els.detailsAvatar.textContent = chat.initials;
     els.detailsName.textContent = chat.name;
-    els.detailsPhone.textContent = chat.phone;
+    els.detailsIdentity.textContent = chat.email;
+    els.detailsEmail.textContent = chat.email;
     els.detailsPresence.textContent = chat.presence;
     els.favoriteState.textContent = chat.favorite ? "Oui" : "Non";
 
@@ -631,11 +781,11 @@
         const chat = state.chats.find((item) => item.id === chatId);
         if (!chat) return;
         const lower = text.toLowerCase();
-        let reply = "Recu.";
-        if (lower.includes("appel")) reply = "Oui, on peut lancer l'appel.";
+        let reply = "Recu sur mon alias email.";
+        if (lower.includes("appel")) reply = "Oui, on peut lancer l'appel chiffre.";
         if (lower.includes("fichier")) reply = "Envoie le fichier ici, je regarde.";
-        if (lower.includes("crash") || lower.includes("plein ecran")) {
-          reply = "Je garde la sortie plein ecran separee de la fermeture.";
+        if (lower.includes("numero") || lower.includes("numéro") || lower.includes("telephone")) {
+          reply = "Pas besoin de numero ici, uniquement un email ou alias.";
         }
         appendMessage(chat, "them", reply);
         if (state.activeChatId !== chat.id) chat.unread += 1;
@@ -661,37 +811,35 @@
       direction: "out",
       at: Date.now(),
     });
-    appendMessage(chat, "system", kind === "video" ? "Appel video simule." : "Appel audio simule.");
-    showToast(kind === "video" ? "Appel video simule" : "Appel audio simule");
+    appendMessage(chat, "system", kind === "video" ? "Appel video chiffre simule." : "Appel audio chiffre simule.");
+    showToast(kind === "video" ? "Appel video chiffre simule" : "Appel audio chiffre simule");
     render();
   }
 
   function createChat() {
     const name = els.newName.value.trim() || "Nouveau contact";
-    const phone = els.newPhone.value.trim() || "+33 6 00 00 00 00";
+    const email = normalizeEmail(els.newEmail.value) || `${name.toLowerCase().replaceAll(" ", ".")}@alias.local`;
     const group = els.newGroup.checked;
     const index = state.chats.length + 1;
-    const initials = name
-      .split(/\s+/)
-      .filter(Boolean)
-      .slice(0, 2)
-      .map((part) => part[0].toUpperCase())
-      .join("")
-      .slice(0, 2) || "NC";
+
+    if (!email.includes("@")) {
+      showToast("Email invalide");
+      return;
+    }
 
     const chat = {
       id: `chat-${Date.now()}`,
       name,
-      phone: group ? "Groupe" : phone,
-      initials,
+      email: group ? `${email.split("@")[0]}@group.greenchat.local` : email,
+      initials: initialsFromName(name),
       color: colors[index % colors.length],
-      presence: group ? "Nouveau groupe" : "en ligne",
+      presence: group ? "groupe prive" : "en ligne",
       group,
       pinned: false,
       favorite: false,
       unread: 0,
       media: 1,
-      messages: [message("system", "Discussion creee localement.", Date.now())],
+      messages: [message("system", "Discussion email-only creee et chiffree localement.", Date.now())],
     };
 
     state.chats.unshift(chat);
@@ -699,7 +847,7 @@
     state.activeView = "chats";
     els.newChatForm.reset();
     els.modal.close();
-    showToast("Chat cree");
+    showToast("Chat chiffre cree");
     render();
   }
 
@@ -728,7 +876,7 @@
     }
 
     els.voiceButton.classList.add("is-recording");
-    showToast("Enregistrement vocal...");
+    showToast("Enregistrement vocal chiffre...");
     recordingTimer = window.setTimeout(() => {
       guarded("voice-message", () => {
         const chat = activeChat();
@@ -742,6 +890,18 @@
   }
 
   function bind() {
+    els.authForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      guarded("unlock", async () => {
+        await unlockVault(els.authEmail.value, els.authSecret.value);
+        els.authSecret.value = "";
+        unlockUi();
+        resizeInput();
+        render();
+        showToast("Coffre chiffre deverrouille");
+      });
+    });
+
     document.querySelectorAll(".rail-button").forEach((button) => {
       button.addEventListener("click", () => {
         guarded("nav", () => {
@@ -766,7 +926,7 @@
       guarded("search", () => {
         state.query = els.search.value;
         renderSideContent();
-        persist();
+        schedulePersist();
       });
     });
 
@@ -825,9 +985,9 @@
     els.attachButton.addEventListener("click", () => {
       guarded("attachment", () => {
         const chat = activeChat();
-        appendMessage(chat, "me", "Piece jointe: image-demo.png", "attachment");
+        appendMessage(chat, "me", "Piece jointe chiffree: image-demo.png", "attachment");
         chat.media = (chat.media || 0) + 1;
-        showToast("Piece jointe ajoutee");
+        showToast("Piece jointe chiffree ajoutee");
         render();
       });
     });
@@ -840,27 +1000,27 @@
       guarded("details", () => {
         state.detailsOpen = !state.detailsOpen;
         renderDetails();
-        persist();
+        schedulePersist();
       });
     });
     els.openDetailsButton.addEventListener("click", () => {
       guarded("open-details", () => {
         state.detailsOpen = true;
         renderDetails();
-        persist();
+        schedulePersist();
       });
     });
     els.closeDetailsButton.addEventListener("click", () => {
       guarded("close-details", () => {
         state.detailsOpen = false;
         renderDetails();
-        persist();
+        schedulePersist();
       });
     });
 
     els.favoriteButton.addEventListener("click", () => guarded("favorite", toggleFavorite));
     els.archiveButton.addEventListener("click", () => {
-      guarded("archive", () => showToast("Archivage simule localement"));
+      guarded("archive", () => showToast("Archivage local chiffre"));
     });
 
     els.newChatButton.addEventListener("click", () => {
@@ -879,12 +1039,12 @@
     });
 
     document.addEventListener("visibilitychange", () => {
-      if (document.visibilityState === "hidden") guarded("visibility-save", persist);
+      if (document.visibilityState === "hidden") void persistNow();
     });
-    window.addEventListener("beforeunload", () => guarded("beforeunload", persist));
+    window.addEventListener("beforeunload", () => {
+      void persistNow();
+    });
   }
 
   bind();
-  resizeInput();
-  render();
 })();

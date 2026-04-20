@@ -45,6 +45,77 @@ body {
   color: var(--text);
 }
 
+.auth-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background:
+    linear-gradient(180deg, rgba(0, 128, 105, 0.96) 0 42%, rgba(227, 223, 215, 0.96) 42%),
+    var(--app-bg);
+}
+
+.auth-screen.is-hidden {
+  display: none;
+}
+
+.auth-card {
+  display: grid;
+  gap: 14px;
+  width: min(420px, 100%);
+  padding: 24px;
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.auth-mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: var(--radius);
+  color: #fff;
+  background: var(--green);
+  font-size: 1.2rem;
+  font-weight: 900;
+}
+
+.auth-card h1,
+.auth-card p,
+.auth-card small {
+  margin: 0;
+}
+
+.auth-card h1 {
+  font-size: 1.6rem;
+}
+
+.auth-card p,
+.auth-card small {
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.auth-card label {
+  display: grid;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 0.86rem;
+  font-weight: 750;
+}
+
+.auth-card input {
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line-dark);
+  border-radius: var(--radius);
+  color: var(--text);
+  background: #fff;
+}
+
 button,
 input,
 textarea {
@@ -89,6 +160,11 @@ svg {
   border-radius: var(--radius);
   background: var(--panel);
   box-shadow: var(--shadow);
+}
+
+.messenger-shell.is-locked {
+  filter: blur(8px);
+  pointer-events: none;
 }
 
 .rail {
@@ -652,6 +728,29 @@ svg {
   border-bottom: 1px solid var(--line);
   cursor: pointer;
   text-align: left;
+}
+
+.identity-row {
+  display: grid;
+  gap: 6px;
+  padding-bottom: 12px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+
+.identity-row span {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 800;
+}
+
+.identity-row strong {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 0.88rem;
 }
 
 .setting-row span {
